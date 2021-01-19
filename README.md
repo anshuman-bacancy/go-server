@@ -2,5 +2,6 @@
 CRUD implementation using default net/http package.
 
 ## Todo ##
-  * make dashboard template global. Reduce LOC
+  * Make dashboard template global. Reduce LOC
+  * Fix employee order after update
   
