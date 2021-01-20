@@ -4,15 +4,25 @@ import (
   "os"
   "fmt"
   "net/http"
-  "io/ioutil"
   "html/template"
-  "encoding/json"
+  "database/sql"
+  _ "github.com/go-sql-driver/mysql"
 )
+
+func init() {
+  db, dbErr = sql.Open("mysql", "anshuman:anshuman32@tcp(localhost:3306)/goDb")
+  if dbErr != nil {
+    fmt.Println("here", dbErr)
+  }
+  fmt.Println("Database connection successful...")
+}
 
 //-------- GLOBAL VARIABLES --------------
 var adminGlobalEmail string
 var adminGlobalPass string
 var empFilePath string = "data/EmployeeMaster.json"
+var db *sql.DB
+var dbErr error
 //----------------------------------------
 
 //-------- TEMPLATES ---------------------
@@ -39,34 +49,28 @@ type Admin struct {
 //----------------------------------------
 
 // ----------- HELPER FUNCTIONS ----------
-func addOrRemove(email string) {
-  allEmps := getEmployees()
-  empty()
-  for i := len(allEmps)-1; i >= 0; i-- {
-    emp := allEmps[i]
-    if emp.Email == email {
-      allEmps = append(allEmps[:i], allEmps[i+1:]...)
-    } else { save(emp) }
-  }
-}
-
-func empty() {
-  os.Remove(empFilePath)
-  os.Create(empFilePath)
-}
-
 func getEmployees() []Employee {
-  file, _ := ioutil.ReadFile(empFilePath)
   var allEmps []Employee
-  json.Unmarshal([]byte(file), &allEmps)
+
+  rows, empsErr := db.Query("select * from Employees")
+  if empsErr != nil {
+  }
+  for rows.Next() {
+    var emp Employee
+    rows.Scan(&emp.Name, &emp.Email, &emp.Password, &emp.Position)
+    allEmps = append(allEmps, emp)
+  }
   return allEmps
 }
 
 func save(emp Employee) {
-  allEmps := getEmployees()
-  allEmps = append(allEmps, emp)
-  empMarshalInd, _ := json.MarshalIndent(allEmps, "", "")
-  _ = ioutil.WriteFile(empFilePath, empMarshalInd, 0644)
+  //save to db
+  _, insertErr := db.Query("insert into Employees (name, email, password, position) values ('"+emp.Name+"','"+emp.Email+"','"+emp.Password+"','"+emp.Position+"')")
+
+  if insertErr != nil {
+    fmt.Println(insertErr)
+  }
+  fmt.Println(emp, "Inserted!")
 }
 // ---------------------------------------
 
@@ -97,8 +101,8 @@ func employee(res http.ResponseWriter, req *http.Request) {
   if req.Method == "POST" {
     name := req.FormValue("name")
     email := req.FormValue("email")
-    pos := req.FormValue("pos")
     pass := req.FormValue("password")
+    pos := req.FormValue("pos")
 
     e := Employee{Name: name, Email: email, Password: pass, Position: pos}
     save(e)
@@ -118,32 +122,41 @@ func showEmployees(res http.ResponseWriter, req *http.Request) {
 
 func update(res http.ResponseWriter, req *http.Request) {
   email := req.URL.Query().Get("email")
-  updateTemp := template.Must(template.ParseFiles("static/update.html"))
+  fmt.Println(req.Method)
 
-  var empToUpdate Employee
-  allEmps := getEmployees()
+  if req.Method == "GET" {
+    updateTemp := template.Must(template.ParseFiles("static/update.html"))
 
-  for _, emp := range allEmps {
-    if emp.Email == email {
-      empToUpdate = emp
-      break
+    //search employee based on email
+    var empToUpdate Employee
+    allEmps := getEmployees()
+
+    for _, emp := range allEmps {
+      if emp.Email == email {
+        empToUpdate = emp
+        break
+      }
     }
-  }
-  addOrRemove(email)
 
-  updateInfo := UpdateData{Updater: adminGlobalEmail, Updatee: empToUpdate}
-  updateTemp.Execute(res, updateInfo)
+    updateInfo := UpdateData{Updater: adminGlobalEmail, Updatee: empToUpdate}
+    updateTemp.Execute(res, updateInfo)
+  }
 }
 
 func saveEmp(res http.ResponseWriter, req *http.Request) {
   if req.Method == "POST" {
+    email := req.URL.Query().Get("email")
+
     newName := req.FormValue("name")
     newPass := req.FormValue("pass")
     newEmail := req.FormValue("email")
     newPosition := req.FormValue("pos")
 
-    updatedEmp := Employee{Name:newName, Email:newEmail, Password:newPass, Position:newPosition}
-    save(updatedEmp)
+    upd, updErr := db.Prepare("update Employees set name=?, email=?, password=?, position=? where email=?")
+    if updErr != nil {
+      fmt.Println(updErr)
+    }
+    upd.Exec(newName, newEmail, newPass ,newPosition, email)
 
     adminCreds := Admin{Email: adminGlobalEmail, Password: adminGlobalPass}
     dashboard := Dashboard{AllEmps: getEmployees(), AdminCreds: adminCreds}
@@ -156,7 +169,11 @@ func saveEmp(res http.ResponseWriter, req *http.Request) {
 func remove(res http.ResponseWriter, req *http.Request) {
   if req.Method == "GET" {
     email := req.FormValue("email")
-    addOrRemove(email)
+    _, delErr := db.Query("delete from Employees where email='"+email+"'")
+    if delErr != nil {
+      fmt.Println(delErr)
+    }
+    fmt.Println(email , "deletion successful")
 
     adminCreds := Admin{Email: adminGlobalEmail, Password: adminGlobalPass}
     dashboard := Dashboard{AllEmps: getEmployees(), AdminCreds: adminCreds}
@@ -175,7 +192,9 @@ func home(res http.ResponseWriter, req *http.Request) {
 // ---------------------------------------
 
 func main() {
-  fmt.Println("\033[32mServer is running....")
+  fmt.Println("Server is running....")
+
+  defer db.Close()
 
   http.HandleFunc("/", home)
   http.HandleFunc("/home", home)
