@@ -8,7 +8,8 @@
 <body>
 	<div class="container">
     <h1> Dashboard </h1>
-    <div> Welcome, <strong>{{.AdminCreds.Email}}</strong></div>
+    <div><h6> Welcome, <strong>{{.AdminCreds.Email}}</strong></div>
+    <div><h6><b>Total Employees : </b>{{.TotalEmps}}</h6></div>
 
     <div><h3>Employees</h3></div>
 
@@ -19,6 +20,7 @@
             <th>Name</th>
             <th>Position</th>
             <th>Email</th>
+            <th>Profile</th>
           </tr>
         </thead>
 
@@ -27,6 +29,7 @@
           <td>{{.Name}}</td>
           <td>{{.Position}}</td>
           <td>{{.Email}}</td>
+          <td><img src="http://localhost:8000/resources/{{.Profile}}" height=100 width=100></img></td>
           <td><a href="http://localhost:8000/admin/remove?email={{.Email}}" class="btn btn-small red"><i class="material-icons">remove</a></td>
           <td><a href="http://localhost:8000/admin/update?email={{.Email}}" class="waves-effect waves-light btn"><i class="material-icons">edit</i></a></td>
         </tr>

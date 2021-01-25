@@ -5,12 +5,14 @@
   <meta name="author" content="Anshuman Aich">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/css/materialize.min.css">
   <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+  <script class="jsbin" src="http://ajax.googleapis.com/ajax/libs/jquery/1/jquery.min.js"></script>
+
 </head>
 
 <body>
 	<div class="container">
     <h1> Registration  <i class="material-icons">person</i> </h1>
-      <form method="post">
+      <form method="post" enctype="multipart/form-data">
         <div class="row">
           <div class="form-group col-lg-1">
             <label for="name">Name</label>
@@ -36,18 +38,17 @@
           </div>
         </div>
 
-        <!-- <div class="row">
+        <div class="row">
           <div class="form-group col-lg-1">
-            <label for="profile">Profile</label>
+            <label for="profile">Add your profile with your name as title. Example: "John Doe.jpg"</label><br>
             <input type="file" name="profile" class="form-control" />
           </div>
-        </div> -->
+        </div>
 
         <div class="row">
-          <button formaction="http://localhost:8000/employee" class="btn btn-lg">Send</button>
+          <button formaction="http://localhost:8000/employee/" class="btn btn-lg">Send</button>
         </div>
       </form>
 	</div>
-  <script src="../scripts/regScript.js"></script>
 </body>
 </html>

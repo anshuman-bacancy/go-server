@@ -1,10 +1,13 @@
 package main
 
 import (
+  "io"
   "os"
   "fmt"
+  "log"
   "net/http"
   "html/template"
+  "path/filepath"
   "database/sql"
   _ "github.com/go-sql-driver/mysql"
 )
@@ -12,7 +15,7 @@ import (
 func init() {
   db, dbErr = sql.Open("mysql", "anshuman:anshuman32@tcp(localhost:3306)/goDb")
   if dbErr != nil {
-    fmt.Println("here", dbErr)
+    checkErr(dbErr)
   }
   fmt.Println("Database connection successful...")
 }
@@ -34,13 +37,15 @@ type UpdateData struct {
 type Dashboard struct {
   AllEmps []Employee
   AdminCreds Admin
+  TotalEmps int
 }
 
 type Employee struct {
-  Name string `json:"Name"`
-  Email string `json:"Email"`
-  Password string `json:"Password"`
-  Position string `json:"Position"`
+  Name string
+  Email string
+  Password string
+  Position string
+  Profile string
 }
 
 type Admin struct {
@@ -49,6 +54,9 @@ type Admin struct {
 //----------------------------------------
 
 // ----------- HELPER FUNCTIONS ----------
+func checkErr(err error) {
+  fmt.Println(err)
+}
 func getEmployees() []Employee {
   var allEmps []Employee
 
@@ -57,7 +65,7 @@ func getEmployees() []Employee {
   }
   for rows.Next() {
     var emp Employee
-    rows.Scan(&emp.Name, &emp.Email, &emp.Password, &emp.Position)
+    rows.Scan(&emp.Name, &emp.Email, &emp.Password, &emp.Position, &emp.Profile)
     allEmps = append(allEmps, emp)
   }
   return allEmps
@@ -65,7 +73,7 @@ func getEmployees() []Employee {
 
 func save(emp Employee) {
   //save to db
-  _, insertErr := db.Query("insert into Employees (name, email, password, position) values ('"+emp.Name+"','"+emp.Email+"','"+emp.Password+"','"+emp.Position+"')")
+  _, insertErr := db.Query("insert into Employees (name, email, password, position, profile) values ('"+emp.Name+"','"+emp.Email+"','"+emp.Password+"','"+emp.Position+"','"+emp.Profile+"')")
 
   if insertErr != nil {
     fmt.Println(insertErr)
@@ -86,7 +94,7 @@ func admin(res http.ResponseWriter, req *http.Request) {
     adminGlobalEmail, adminGlobalPass = req.FormValue("email"), req.FormValue("password")
 
     adminCreds := Admin{Email: adminGlobalEmail, Password: adminGlobalPass}
-    dashboard := Dashboard{AllEmps: getEmployees(), AdminCreds: adminCreds}
+    dashboard := Dashboard{AllEmps: getEmployees(), AdminCreds: adminCreds, TotalEmps: len(getEmployees())}
 
     adminTemp := template.Must(template.ParseFiles("static/dashboard.html"))
     adminTemp.Execute(res, dashboard)
@@ -104,7 +112,19 @@ func employee(res http.ResponseWriter, req *http.Request) {
     pass := req.FormValue("password")
     pos := req.FormValue("pos")
 
-    e := Employee{Name: name, Email: email, Password: pass, Position: pos}
+    req.ParseMultipartForm(5 * 1024 * 1024)
+    file, handler, _ :=  req.FormFile("profile")
+
+    defer file.Close()
+
+    //save img 
+    imgPath := filepath.Join("profiles/", handler.Filename)
+    dst, err := os.Create(imgPath)
+    if err != nil { checkErr(err) }
+    defer dst.Close()
+    io.Copy(dst, file)
+
+    e := Employee{Name: name, Email: email, Password: pass, Position: pos, Profile: imgPath}
     save(e)
 
     empTemp := template.Must(template.ParseFiles("static/reg.html"))
@@ -115,14 +135,13 @@ func employee(res http.ResponseWriter, req *http.Request) {
 func showEmployees(res http.ResponseWriter, req *http.Request) {
   if req.Method == "GET" {
     allEmps := getEmployees()
-    disp := template.Must(template.ParseFiles("static/adminHome.html"))
+    disp := template.Must(template.ParseFiles("static/admin.html"))
     disp.Execute(res, allEmps)
   }
 }
 
 func update(res http.ResponseWriter, req *http.Request) {
   email := req.URL.Query().Get("email")
-  fmt.Println(req.Method)
 
   if req.Method == "GET" {
     updateTemp := template.Must(template.ParseFiles("static/update.html"))
@@ -137,16 +156,14 @@ func update(res http.ResponseWriter, req *http.Request) {
         break
       }
     }
-
     updateInfo := UpdateData{Updater: adminGlobalEmail, Updatee: empToUpdate}
     updateTemp.Execute(res, updateInfo)
   }
 }
 
 func saveEmp(res http.ResponseWriter, req *http.Request) {
+  oldEmail := req.URL.Query().Get("email")
   if req.Method == "POST" {
-    email := req.URL.Query().Get("email")
-
     newName := req.FormValue("name")
     newPass := req.FormValue("pass")
     newEmail := req.FormValue("email")
@@ -154,12 +171,12 @@ func saveEmp(res http.ResponseWriter, req *http.Request) {
 
     upd, updErr := db.Prepare("update Employees set name=?, email=?, password=?, position=? where email=?")
     if updErr != nil {
-      fmt.Println(updErr)
+      checkErr(updErr)
     }
-    upd.Exec(newName, newEmail, newPass ,newPosition, email)
+    upd.Exec(newName, newEmail, newPass, newPosition, oldEmail)
 
     adminCreds := Admin{Email: adminGlobalEmail, Password: adminGlobalPass}
-    dashboard := Dashboard{AllEmps: getEmployees(), AdminCreds: adminCreds}
+    dashboard := Dashboard{AllEmps: getEmployees(), AdminCreds: adminCreds, TotalEmps: len(getEmployees())}
 
     t := template.Must(template.ParseFiles("static/dashboard.html"))
     t.Execute(res, dashboard)
@@ -171,12 +188,12 @@ func remove(res http.ResponseWriter, req *http.Request) {
     email := req.FormValue("email")
     _, delErr := db.Query("delete from Employees where email='"+email+"'")
     if delErr != nil {
-      fmt.Println(delErr)
+      checkErr(delErr)
     }
     fmt.Println(email , "deletion successful")
 
     adminCreds := Admin{Email: adminGlobalEmail, Password: adminGlobalPass}
-    dashboard := Dashboard{AllEmps: getEmployees(), AdminCreds: adminCreds}
+    dashboard := Dashboard{AllEmps: getEmployees(), AdminCreds: adminCreds, TotalEmps: len(getEmployees())}
 
     t := template.Must(template.ParseFiles("static/dashboard.html"))
     t.Execute(res, dashboard)
@@ -192,17 +209,20 @@ func home(res http.ResponseWriter, req *http.Request) {
 // ---------------------------------------
 
 func main() {
-  fmt.Println("Server is running....")
+  log.Println("Server is running....")
 
   defer db.Close()
 
   http.HandleFunc("/", home)
-  http.HandleFunc("/home", home)
   http.HandleFunc("/admin", admin)
-  http.HandleFunc("/employee", employee)
+  http.HandleFunc("/employee/", employee)
   http.HandleFunc("/showEmployees", showEmployees)
   http.HandleFunc("/admin/remove/", remove)
   http.HandleFunc("/admin/update/", update)
   http.HandleFunc("/admin/save", saveEmp)
+
+  fs := http.StripPrefix("/resources/profiles", http.FileServer(http.Dir("./profiles")))
+  http.Handle("/resources/", fs)
+
   http.ListenAndServe(":8000", nil)
 }
