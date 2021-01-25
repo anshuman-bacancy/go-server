@@ -1,5 +1,6 @@
 script.js
 .*.swp
-./profile
+./profiles
 ./scripts
 ./gin-bin
+gin-bin
