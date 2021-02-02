@@ -13,10 +13,10 @@ import (
 )
 
 func init() {
+  tpl = template.Must(template.ParseGlob("static/*.html"))
+
   db, dbErr = sql.Open("mysql", "anshuman:anshuman32@tcp(localhost:3306)/goDb")
-  if dbErr != nil {
-    checkErr(dbErr)
-  }
+  checkErr(dbErr)
   fmt.Println("Database connection successful...")
 }
 
@@ -26,6 +26,7 @@ var adminGlobalPass string
 var empFilePath string = "data/EmployeeMaster.json"
 var db *sql.DB
 var dbErr error
+var tpl *template.Template
 //----------------------------------------
 
 //-------- TEMPLATES ---------------------
@@ -55,7 +56,9 @@ type Admin struct {
 
 // ----------- HELPER FUNCTIONS ----------
 func checkErr(err error) {
-  fmt.Println(err)
+  if err != nil {
+    fmt.Println(err)
+  }
 }
 func getEmployees() []Employee {
   var allEmps []Employee
@@ -86,8 +89,7 @@ func save(emp Employee) {
 // ----------- ROUTE HANDLERS ----------
 func admin(res http.ResponseWriter, req *http.Request) {
   if req.Method == "GET" {
-    adminTemp := template.Must(template.ParseFiles("static/admin.html"))
-    adminTemp.Execute(res, nil)
+    tpl.ExecuteTemplate(res, "admin.html", nil)
   }
 
   if req.Method == "POST" {
@@ -96,15 +98,14 @@ func admin(res http.ResponseWriter, req *http.Request) {
     adminCreds := Admin{Email: adminGlobalEmail, Password: adminGlobalPass}
     dashboard := Dashboard{AllEmps: getEmployees(), AdminCreds: adminCreds, TotalEmps: len(getEmployees())}
 
-    adminTemp := template.Must(template.ParseFiles("static/dashboard.html"))
-    adminTemp.Execute(res, dashboard)
+    tpl.ExecuteTemplate(res, "dashboard.html", dashboard)
   }
 }
 
 func employee(res http.ResponseWriter, req *http.Request) {
   if req.Method == "GET"  {
-    empTemp := template.Must(template.ParseFiles("static/reg.html"))
-    empTemp.Execute(res, nil)
+
+    tpl.ExecuteTemplate(res, "reg.html", nil)
   }
   if req.Method == "POST" {
     name := req.FormValue("name")
@@ -120,23 +121,22 @@ func employee(res http.ResponseWriter, req *http.Request) {
     //save img 
     imgPath := filepath.Join("profiles/", handler.Filename)
     dst, err := os.Create(imgPath)
-    if err != nil { checkErr(err) }
+     checkErr(err)
     defer dst.Close()
     io.Copy(dst, file)
 
     e := Employee{Name: name, Email: email, Password: pass, Position: pos, Profile: imgPath}
     save(e)
 
-    empTemp := template.Must(template.ParseFiles("static/reg.html"))
-    empTemp.Execute(res, nil)
+    tpl.ExecuteTemplate(res, "reg.html", nil)
   }
 }
 
 func showEmployees(res http.ResponseWriter, req *http.Request) {
   if req.Method == "GET" {
     allEmps := getEmployees()
-    disp := template.Must(template.ParseFiles("static/admin.html"))
-    disp.Execute(res, allEmps)
+
+    tpl.ExecuteTemplate(res, "reg.html", allEmps)
   }
 }
 
@@ -144,8 +144,6 @@ func update(res http.ResponseWriter, req *http.Request) {
   email := req.URL.Query().Get("email")
 
   if req.Method == "GET" {
-    updateTemp := template.Must(template.ParseFiles("static/update.html"))
-
     //search employee based on email
     var empToUpdate Employee
     allEmps := getEmployees()
@@ -156,8 +154,9 @@ func update(res http.ResponseWriter, req *http.Request) {
         break
       }
     }
+
     updateInfo := UpdateData{Updater: adminGlobalEmail, Updatee: empToUpdate}
-    updateTemp.Execute(res, updateInfo)
+    tpl.ExecuteTemplate(res, "update.html", updateInfo)
   }
 }
 
@@ -170,16 +169,13 @@ func saveEmp(res http.ResponseWriter, req *http.Request) {
     newPosition := req.FormValue("pos")
 
     upd, updErr := db.Prepare("update Employees set name=?, email=?, password=?, position=? where email=?")
-    if updErr != nil {
-      checkErr(updErr)
-    }
+    checkErr(updErr)
     upd.Exec(newName, newEmail, newPass, newPosition, oldEmail)
 
     adminCreds := Admin{Email: adminGlobalEmail, Password: adminGlobalPass}
     dashboard := Dashboard{AllEmps: getEmployees(), AdminCreds: adminCreds, TotalEmps: len(getEmployees())}
 
-    t := template.Must(template.ParseFiles("static/dashboard.html"))
-    t.Execute(res, dashboard)
+    tpl.ExecuteTemplate(res, "dashboard.html", dashboard)
   }
 }
 
@@ -187,23 +183,19 @@ func remove(res http.ResponseWriter, req *http.Request) {
   if req.Method == "GET" {
     email := req.FormValue("email")
     _, delErr := db.Query("delete from Employees where email='"+email+"'")
-    if delErr != nil {
-      checkErr(delErr)
-    }
+    checkErr(delErr)
     fmt.Println(email , "deletion successful")
 
     adminCreds := Admin{Email: adminGlobalEmail, Password: adminGlobalPass}
     dashboard := Dashboard{AllEmps: getEmployees(), AdminCreds: adminCreds, TotalEmps: len(getEmployees())}
 
-    t := template.Must(template.ParseFiles("static/dashboard.html"))
-    t.Execute(res, dashboard)
+    tpl.ExecuteTemplate(res, "dashboard.html", dashboard)
   }
 }
 
 func home(res http.ResponseWriter, req *http.Request) {
   if req.Method == "GET" {
-    homeTemp := template.Must(template.ParseFiles("static/home.html"))
-    homeTemp.Execute(res, nil)
+    tpl.ExecuteTemplate(res, "home.html", nil)
   }
 }
 // ---------------------------------------
@@ -221,6 +213,7 @@ func main() {
   http.HandleFunc("/admin/update/", update)
   http.HandleFunc("/admin/save", saveEmp)
 
+  // file server for images
   fs := http.StripPrefix("/resources/profiles", http.FileServer(http.Dir("./profiles")))
   http.Handle("/resources/", fs)
 
